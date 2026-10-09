@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TimePulse - Short & Extra Hours Attendance Calculator</title>
+  <meta name="description" content="Calculate office short hours, extra hours, lunch punches and net differences from punch data. Supports timesheet.xls and custom office shifts.">
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="brand-section">
+        <div class="brand-logo" title="TimePulse Attendance Engine">
+          <svg viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polyline points="12 6 12 12 16 14"></polyline>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1>
+            TimePulse <span class="brand-badge">PRO</span>
+          </h1>
+          <p>Office Attendance, Short Hours & Overtime Engine</p>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button id="btnUploadModal" class="btn btn-primary" title="Upload your timesheet file">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="17 8 12 3 7 8"></polyline>
+            <line x1="12" y1="3" x2="12" y2="15"></line>
+          </svg>
+          Upload Timesheet
+        </button>
+
+        <button id="btnReloadSample" class="btn btn-secondary" title="Load sample dataset from timesheet.xls">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M23 4v6h-6"></path>
+            <path d="M1 20v-6h6"></path>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+          </svg>
+          Reload timesheet.xls
+        </button>
+
+        <button id="btnExportCsv" class="btn btn-secondary" title="Export current results as CSV">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <polyline points="10 9 9 9 8 9"></polyline>
+          </svg>
+          Export CSV
+        </button>
+
+        <button id="btnSettingsModal" class="btn btn-secondary btn-icon" title="Configure shift timings and calculation rules">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
+
+        <button id="btnThemeToggle" class="btn btn-secondary btn-icon" title="Toggle Dark/Light Mode">
+          <svg id="themeIconDark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Quick Rules Reference Banner -->
+    <div class="rule-banner">
+      <div class="rule-chips">
+        <div class="rule-chip highlight">
+          <span>Office Start:</span>
+          <strong id="badgeStartTime">08:10</strong>
+        </div>
+        <div class="rule-chip highlight">
+          <span>Office End:</span>
+          <strong id="badgeEndTime">16:50</strong>
+        </div>
+        <div class="rule-chip">
+          <span>Lunch Window:</span>
+          <strong>12:10 &ndash; 12:40 (30m)</strong>
+        </div>
+        <div class="rule-chip">
+          <span>Lunch Limit:</span>
+          <strong>12:40 Hard Limit</strong>
+        </div>
+        <div class="rule-chip">
+          <span>Half Day AM:</span>
+          <strong>08:10 &ndash; 12:10</strong>
+        </div>
+        <div class="rule-chip">
+          <span>Half Day PM:</span>
+          <strong>12:10 &ndash; 16:50</strong>
+        </div>
+      </div>
+      <div class="rule-banner-right">
+        <span class="badge badge-success">Official Punches: Exempt</span>
+        <span class="badge badge-danger">Personal Punches: Counted</span>
+      </div>
+    </div>
+
+    <!-- Metrics KPI Dashboard -->
+    <section class="metrics-grid">
+      <!-- Net Balance Card -->
+      <div class="metric-card net" id="cardNetBalance">
+        <div class="metric-header">
+          <span class="metric-title">Net Balance</span>
+          <div class="metric-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="1" x2="12" y2="23"></line>
+              <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+            </svg>
+          </div>
+        </div>
+        <div class="metric-value" id="valNetBalance">--</div>
+        <div class="metric-sub" id="subNetBalance">
+          Decimal: <strong id="valNetDecimal">--</strong> hrs
+        </div>
+      </div>
+
+      <!-- Total Extra Hours -->
+      <div class="metric-card surplus">
+        <div class="metric-header">
+          <span class="metric-title">Total Extra Time</span>
+          <div class="metric-icon" style="color: var(--success);">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
+              <polyline points="17 6 23 6 23 12"></polyline>
+            </svg>
+          </div>
+        </div>
+        <div class="metric-value positive" id="valTotalExtra">--</div>
+        <div class="metric-sub">
+          Across <strong id="valExtraDays">0</strong> surplus days
+        </div>
+      </div>
+
+      <!-- Total Short Hours -->
+      <div class="metric-card deficit">
+        <div class="metric-header">
+          <span class="metric-title">Total Short Time</span>
+          <div class="metric-icon" style="color: var(--danger);">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="23 18 13.5 8.5 8.5 13.5 1 6"></polyline>
+              <polyline points="17 18 23 18 23 12"></polyline>
+            </svg>
+          </div>
+        </div>
+        <div class="metric-value negative" id="valTotalShort">--</div>
+        <div class="metric-sub">
+          Across <strong id="valShortDays">0</strong> deficit days
+        </div>
+      </div>
+
+      <!-- Working Days Breakdown -->
+      <div class="metric-card days">
+        <div class="metric-header">
+          <span class="metric-title">Active Days</span>
+          <div class="metric-icon" style="color: var(--accent-cyan);">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+          </div>
+        </div>
+        <div class="metric-value" id="valTotalDays">--</div>
+        <div class="metric-sub">
+          <strong id="valFullDays">0</strong> Full | <strong id="valHalfDays">0</strong> Half
+        </div>
+      </div>
+
+      <!-- Punctuality / Compliance -->
+      <div class="metric-card punctual">
+        <div class="metric-header">
+          <span class="metric-title">Morning On-Time</span>
+          <div class="metric-icon" style="color: var(--warning);">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 14 14"></polyline>
+            </svg>
+          </div>
+        </div>
+        <div class="metric-value" id="valPunctualRate">--%</div>
+        <div class="metric-sub">
+          <strong id="valOnTimeDays">0</strong> days &le; 08:10 AM
+        </div>
+      </div>
+    </section>
+
+    <!-- Navigation & View Mode -->
+    <div class="nav-tabs-container">
+      <div class="nav-tabs" id="monthTabs">
+        <button class="nav-tab active" data-month="ALL">
+          All Months <span class="tab-badge" id="badgeAllCount">0</span>
+        </button>
+        <!-- Dynamically populated month tabs -->
+      </div>
+
+      <div class="view-mode-toggle">
+        <button class="view-btn active" id="viewDetailedBtn">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="8" y1="6" x2="21" y2="6"></line>
+            <line x1="8" y1="12" x2="21" y2="12"></line>
+            <line x1="8" y1="18" x2="21" y2="18"></line>
+            <line x1="3" y1="6" x2="3.01" y2="6"></line>
+            <line x1="3" y1="12" x2="3.01" y2="12"></line>
+            <line x1="3" y1="18" x2="3.01" y2="18"></line>
+          </svg>
+          Daily Timesheet
+        </button>
+        <button class="view-btn" id="viewCompareBtn">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <circle cx="12" cy="14" r="3"></circle>
+          </svg>
+          HR Report Comparator
+        </button>
+      </div>
+    </div>
+
+    <!-- Filters & Toolbar -->
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <div class="search-box">
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="text" id="searchInput" placeholder="Search by date (e.g. 01.04, August)...">
+        </div>
+
+        <select id="statusFilter" class="filter-select">
+          <option value="ALL">All Statuses</option>
+          <option value="SHORT">Short Hours Only (Deficit)</option>
+          <option value="EXTRA">Extra Hours Only (Surplus)</option>
+          <option value="HALF">Half Day Sessions Only</option>
+          <option value="ZERO">Zero Balance Only</option>
+        </select>
+      </div>
+
+      <div class="toolbar-right">
+        <span id="filteredStatsLabel" class="time-mono" style="font-size: 12.5px; color: var(--text-dim);">
+          Showing 0 days
+        </span>
+      </div>
+    </div>
+
+    <!-- Detailed Timesheet View Table -->
+    <div class="table-container" id="detailedTableView">
+      <div class="table-responsive">
+        <table class="data-table" id="timesheetTable">
+          <thead>
+            <tr>
+              <th>Date & Day</th>
+              <th>Session</th>
+              <th>First Punch In</th>
+              <th>Last Punch Out</th>
+              <th>Punches Breakdown</th>
+              <th>Morning Lateness</th>
+              <th>Evening Extra</th>
+              <th>Lunch Deduction</th>
+              <th>Personal Out</th>
+              <th>Total Short</th>
+              <th>Total Extra</th>
+              <th>Net Difference</th>
+              <th style="text-align: right;">Action</th>
+            </tr>
+          </thead>
+          <tbody id="timesheetTableBody">
+            <!-- Dynamically populated rows -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- HR Report Comparator View Table -->
+    <div class="table-container" id="compareTableView" style="display: none;">
+      <div style="padding: 18px 22px; border-bottom: 1px solid var(--border-glass); background: rgba(99, 102, 241, 0.05); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+        <div>
+          <h3 style="font-family: var(--font-heading); font-size: 16px; font-weight: 600; color: var(--text-main);">
+            Official Reference Images Ground Truth Verification
+          </h3>
+          <p style="font-size: 12.5px; color: var(--text-muted);">
+            Comparing calculated net hours with exact values extracted from IMG-20260930-WA0002.jpg, IMG-20260930-WA0003.jpg & IMG-20260930-WA0004.jpg.
+          </p>
+        </div>
+        <div id="comparatorAccuracyBadge" class="badge badge-success" style="font-size: 13px; padding: 6px 14px;">
+          Accuracy: Calculating...
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="data-table" id="comparatorTable">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Reference Source</th>
+              <th>Punches Recorded</th>
+              <th>Calculated (Hours & Mins)</th>
+              <th>Calculated Decimal</th>
+              <th>Official Report Decimal</th>
+              <th>Difference</th>
+              <th>Match Status</th>
+            </tr>
+          </thead>
+          <tbody id="comparatorTableBody">
+            <!-- Dynamically populated comparison rows -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <div>
+        TimePulse &bull; Intelligent Timesheet & Short Hours Calculator
+      </div>
+      <div class="time-mono">
+        Shift: 08:10 &ndash; 16:50 | Lunch: 12:10 &ndash; 12:40 (12:40 Limit)
+      </div>
+    </footer>
+  </div>
+
+  <!-- Day Detail / Calculation Breakdown Modal -->
+  <div class="modal-overlay" id="detailModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="16" y1="2" x2="16" y2="6"></line>
+            <line x1="8" y1="2" x2="8" y2="6"></line>
+            <line x1="3" y1="10" x2="21" y2="10"></line>
+          </svg>
+          <span id="modalDateTitle">Attendance Breakdown</span>
+        </h3>
+        <button class="modal-close" id="btnCloseDetailModal">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div class="modal-body" id="modalDetailBody">
+        <!-- Dynamically injected timeline and math breakdown -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Upload Modal -->
+  <div class="modal-overlay" id="uploadModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="17 8 12 3 7 8"></polyline>
+            <line x1="12" y1="3" x2="12" y2="15"></line>
+          </svg>
+          Upload Timesheet
+        </h3>
+        <button class="modal-close" id="btnCloseUploadModal">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <div class="dropzone" id="fileDropzone">
+          <input type="file" id="fileInput" accept=".xls,.xlsx,.csv,.tsv,.html,.txt" style="display: none;">
+          <div class="dropzone-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <polyline points="12 18 12 12 9 15"></polyline>
+              <polyline points="12 12 15 15"></polyline>
+            </svg>
+          </div>
+          <h4 style="font-size: 16px; font-weight: 600; margin-bottom: 6px;">
+            Choose a file or drag & drop here
+          </h4>
+          <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 14px;">
+            Supports <strong>timesheet.xls</strong> (HTML/XML Excel table), standard CSV, TSV, or XLSX.
+          </p>
+          <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">
+            Browse File
+          </button>
+        </div>
+
+        <div style="margin-top: 18px; display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 12.5px; color: var(--text-dim);">
+            Looking for sample data?
+          </span>
+          <button class="btn btn-secondary" id="btnUploadLoadSample">
+            Load timesheet.xls from project
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div class="modal-overlay" id="settingsModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+          Office & Calculation Parameters
+        </h3>
+        <button class="modal-close" id="btnCloseSettingsModal">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <form id="settingsForm">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Office Start Time</label>
+              <input type="time" class="form-input" id="cfgOfficeStart" value="08:10" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Office End Time</label>
+              <input type="time" class="form-input" id="cfgOfficeEnd" value="16:50" required>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Lunch Window Start</label>
+              <input type="time" class="form-input" id="cfgLunchStart" value="12:10" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Lunch Window End (Hard Limit)</label>
+              <input type="time" class="form-input" id="cfgLunchEnd" value="12:40" required>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Lunch Duration Allowance (Minutes)</label>
+              <input type="number" class="form-input" id="cfgLunchAllowance" value="30" min="0" max="120" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Lunch Calculation Mode</label>
+              <select class="form-input" id="cfgLunchMode">
+                <option value="MAX_RULE" selected>Strict: Max(Excess Duration, Return after 12:40)</option>
+                <option value="DURATION_ONLY">Duration Only: Time spent &gt; 30 mins</option>
+                <option value="WINDOW_ONLY">Window Only: Return after 12:40</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Half Day Morning Session End</label>
+              <input type="time" class="form-input" id="cfgHalfMorningEnd" value="12:10" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Half Day Afternoon Session Start</label>
+              <input type="time" class="form-input" id="cfgHalfAfternoonStart" value="12:10" required>
+            </div>
+          </div>
+
+          <div style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px;">
+            <button type="button" class="btn btn-secondary" id="btnResetSettings">
+              Reset to Defaults
+            </button>
+            <button type="submit" class="btn btn-primary">
+              Save & Recalculate
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="sample_data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
