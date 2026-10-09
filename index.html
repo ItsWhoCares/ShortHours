@@ -97,13 +97,13 @@
           <span>Lunch Limit:</span>
           <strong>12:40 Hard Limit</strong>
         </div>
+        <div class="rule-chip highlight">
+          <span>Half Day PM Rule:</span>
+          <strong>In &ge; 10:11 AM &rarr; Starts 12:10 PM</strong>
+        </div>
         <div class="rule-chip">
           <span>Half Day AM:</span>
           <strong>08:10 &ndash; 12:10</strong>
-        </div>
-        <div class="rule-chip">
-          <span>Half Day PM:</span>
-          <strong>12:10 &ndash; 16:50</strong>
         </div>
       </div>
       <div class="rule-banner-right">
@@ -483,6 +483,17 @@
             <div class="form-group">
               <label class="form-label">Half Day Afternoon Session Start</label>
               <input type="time" class="form-input" id="cfgHalfAfternoonStart" value="12:10" required>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Half Day PM Auto-Threshold (Punch In &ge;)</label>
+              <input type="time" class="form-input" id="cfgHalfAfternoonThreshold" value="10:11" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Half Day PM Lunch End Boundary</label>
+              <input type="time" class="form-input" id="cfgHalfAfternoonLimit" value="12:40" required>
             </div>
           </div>
 

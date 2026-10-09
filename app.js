@@ -16,7 +16,8 @@
     lunchMode: 'DURATION_EXCESS', // 'DURATION_EXCESS' or 'MAX_RULE' or 'WINDOW_ONLY'
     halfMorningEnd: '12:10',
     halfAfternoonStart: '12:10',
-    halfAfternoonLimit: '12:40'
+    halfAfternoonLimit: '12:40',
+    halfDayAfternoonThreshold: '10:11' // Punch in >= 10:11 AM is automatically Afternoon Half Day
   };
 
   let config = { ...DEFAULT_CONFIG };
@@ -25,9 +26,7 @@
   let rawPunches = [];
   let daysData = {}; // dateKey -> { date, dayOfWeek, punches, sessionType, morningDiff, eveningDiff, lunchPenalty, personalPenalty, totalShort, totalExtra, netMinutes, netDecimal, isWeekend }
   let userSessionOverrides = {
-    "28.05.2026": "HALF_AM",
-    "08.06.2026": "HALF_PM",
-    "31.08.2026": "HALF_PM"
+    "28.05.2026": "HALF_AM"
   };
   let activeMonth = 'ALL';
   let activeStatusFilter = 'ALL';
@@ -154,15 +153,17 @@
       const lastPunch = nonOfficial[nonOfficial.length - 1];
       const firstMin = parseTimeToMinutes(firstPunch.time);
       const lastMin = parseTimeToMinutes(lastPunch.time);
+      const halfPmThresholdMin = parseTimeToMinutes(config.halfDayAfternoonThreshold); // 611 mins (10:11 AM)
 
       // Determine Session Type
       let sessionType = userSessionOverrides[dateStr];
       if (!sessionType) {
-        // Auto-detect half days
-        if (lastMin <= 820 && firstMin < 600) { // Leaves before ~13:40 and arrived morning
-          sessionType = 'HALF_AM';
-        } else if (firstMin >= 740 && lastMin > 900) { // Arrived after ~12:20 and stayed evening
+        // Auto-detect half days:
+        // Rule: Punch in after 10:10 (i.e. >= 10:11 AM) is automatically considered an Afternoon Half Day!
+        if (firstMin >= halfPmThresholdMin) {
           sessionType = 'HALF_PM';
+        } else if (lastMin <= 825 && firstMin <= 610) { // Leaves before ~13:45 having arrived morning
+          sessionType = 'HALF_AM';
         } else {
           sessionType = 'FULL';
         }
@@ -185,7 +186,6 @@
         }
 
         // Past 12:10 is extra (capped or recorded)
-        // If departing after morning session end:
         if (lastMin > halfMorningEndMin) {
           eveningDiff = (lastMin - halfMorningEndMin);
         } else if (lastMin < halfMorningEndMin) {
@@ -193,30 +193,34 @@
         }
 
         // On 28.05.2026 ground truth (-0.15), departure at 13:28 is not counted as overtime beyond shift
-        // If the shift is strictly half day, extra evening is ignored for leave half day unless configured
         if (dateStr === '28.05.2026') {
           eveningDiff = 0; // matches exact HR report
         }
 
       } else if (sessionType === 'HALF_PM') {
-        // Afternoon Session: 12:10 to 16:50 (or arrive by 12:40)
-        // "anything before 12:10 is not considered extra only after 4:50 is considered extra"
-        if (firstMin > halfAfternoonLimitMin) {
-          morningDiff = -(firstMin - halfAfternoonLimitMin);
-        } else {
-          // Arrived before or during lunch -> not late, not extra
+        // Afternoon Session: begins at 12:10 PM, ends at 16:50
+        // User rule: "if i punch after 10:10, i.e punch in >= 10:11 its considered a half day and should begin from 12:10"
+        // User rule: "anything before 12:10 is not considered extra only after 4:50 is considered extra"
+        if (firstMin <= halfAfternoonStartMin) {
+          // Arrived between 10:11 and 12:10: on time for afternoon session! 0 late, 0 extra.
           morningDiff = 0;
+        } else if (firstMin <= halfAfternoonLimitMin) {
+          // Arrived during lunch window (12:10 - 12:40): on time, 0 late, 0 extra.
+          morningDiff = 0;
+        } else {
+          // Arrived after 12:40: late for afternoon session
+          morningDiff = -(firstMin - halfAfternoonLimitMin);
         }
 
         // Evening departure vs 16:50
         if (lastMin > endMin) {
           eveningDiff = (lastMin - endMin);
-        } else {
+        } else if (lastMin < endMin) {
           eveningDiff = -(endMin - lastMin);
         }
 
       } else {
-        // FULL DAY
+        // FULL DAY: 08:10 to 16:50
         // Morning Arrival vs 08:10
         if (firstMin > startMin) {
           morningDiff = -(firstMin - startMin); // late
@@ -227,11 +231,14 @@
         // Evening Departure vs 16:50
         if (lastMin > endMin) {
           eveningDiff = (lastMin - endMin);     // overtime
-        } else {
+        } else if (lastMin < endMin) {
           eveningDiff = -(endMin - lastMin);    // early departure
         }
+      }
 
-        // Intermediates between first and last non-official punches
+      // Intermediate punches (Lunch & Personal) between first and last non-official punches
+      // Applied for FULL and HALF_PM sessions if employee moved during shift
+      if (sessionType !== 'HALF_AM' && nonOfficial.length > 2) {
         const intermediates = nonOfficial.slice(1, -1);
         for (let i = 0; i < intermediates.length - 1; i += 2) {
           const p1 = intermediates[i];
@@ -768,29 +775,79 @@
         </h4>
     `;
 
-    // Step 1: Morning
+    // Step 1: Session & Arrival
     if (item.firstPunch) {
-      if (item.morningDiff < 0) {
+      if (item.sessionType === 'HALF_PM') {
+        const threshold = config.halfDayAfternoonThreshold || '10:11';
+        if (item.morningDiff === 0) {
+          mathHtml += `
+            <div class="calc-row">
+              <span>Session Type: <strong>Afternoon Half Day</strong> (Punch-in at ${item.firstPunch.time} &ge; ${threshold} AM)</span>
+              <span class="badge badge-warning">Starts 12:10 PM</span>
+            </div>
+            <div class="calc-row">
+              <span>Arrival vs Session Start: In at <strong>${item.firstPunch.time}</strong> (prior to 12:10 PM)</span>
+              <span style="color: var(--success); font-weight: 600;">0 mins (On-time, not extra)</span>
+            </div>
+          `;
+        } else {
+          mathHtml += `
+            <div class="calc-row">
+              <span>Session Type: <strong>Afternoon Half Day</strong> (Punch-in at ${item.firstPunch.time} &ge; ${threshold} AM)</span>
+              <span class="badge badge-warning">Starts 12:10 PM</span>
+            </div>
+            <div class="calc-row">
+              <span>Afternoon Arrival: In at <strong>${item.firstPunch.time}</strong> vs Lunch End (12:40)</span>
+              <span style="color: var(--danger); font-weight: 600;">-${Math.abs(item.morningDiff)} mins late</span>
+            </div>
+          `;
+        }
+      } else if (item.sessionType === 'HALF_AM') {
         mathHtml += `
           <div class="calc-row">
-            <span>Morning Arrival: Punch at <strong>${item.firstPunch.time}</strong> vs Office Start (08:10)</span>
-            <span style="color: var(--danger); font-weight: 600;">-${Math.abs(item.morningDiff)} mins late</span>
+            <span>Session Type: <strong>Morning Half Day</strong> (08:10 &ndash; 12:10)</span>
+            <span class="badge badge-warning">Ends 12:10 PM</span>
           </div>
         `;
-      } else if (item.morningDiff > 0) {
-        mathHtml += `
-          <div class="calc-row">
-            <span>Morning Arrival: Punch at <strong>${item.firstPunch.time}</strong> vs Office Start (08:10)</span>
-            <span style="color: var(--success); font-weight: 600;">+${item.morningDiff} mins early</span>
-          </div>
-        `;
+        if (item.morningDiff < 0) {
+          mathHtml += `
+            <div class="calc-row">
+              <span>Morning Arrival: Punch at <strong>${item.firstPunch.time}</strong> vs Office Start (08:10)</span>
+              <span style="color: var(--danger); font-weight: 600;">-${Math.abs(item.morningDiff)} mins late</span>
+            </div>
+          `;
+        } else if (item.morningDiff > 0) {
+          mathHtml += `
+            <div class="calc-row">
+              <span>Morning Arrival: Punch at <strong>${item.firstPunch.time}</strong> vs Office Start (08:10)</span>
+              <span style="color: var(--success); font-weight: 600;">+${item.morningDiff} mins early</span>
+            </div>
+          `;
+        }
       } else {
-        mathHtml += `
-          <div class="calc-row">
-            <span>Morning Arrival: Punch on time (08:10)</span>
-            <span style="color: var(--text-dim);">0 mins</span>
-          </div>
-        `;
+        // Full Day
+        if (item.morningDiff < 0) {
+          mathHtml += `
+            <div class="calc-row">
+              <span>Morning Arrival: Punch at <strong>${item.firstPunch.time}</strong> vs Office Start (08:10)</span>
+              <span style="color: var(--danger); font-weight: 600;">-${Math.abs(item.morningDiff)} mins late</span>
+            </div>
+          `;
+        } else if (item.morningDiff > 0) {
+          mathHtml += `
+            <div class="calc-row">
+              <span>Morning Arrival: Punch at <strong>${item.firstPunch.time}</strong> vs Office Start (08:10)</span>
+              <span style="color: var(--success); font-weight: 600;">+${item.morningDiff} mins early</span>
+            </div>
+          `;
+        } else {
+          mathHtml += `
+            <div class="calc-row">
+              <span>Morning Arrival: Punch on time (08:10)</span>
+              <span style="color: var(--text-dim);">0 mins</span>
+            </div>
+          `;
+        }
       }
     }
 
@@ -1095,6 +1152,8 @@
       config.lunchMode = document.getElementById('cfgLunchMode').value;
       config.halfMorningEnd = document.getElementById('cfgHalfMorningEnd').value;
       config.halfAfternoonStart = document.getElementById('cfgHalfAfternoonStart').value;
+      config.halfDayAfternoonThreshold = document.getElementById('cfgHalfAfternoonThreshold').value || '10:11';
+      config.halfAfternoonLimit = document.getElementById('cfgHalfAfternoonLimit').value || '12:40';
 
       document.getElementById('badgeStartTime').textContent = config.officeStart;
       document.getElementById('badgeEndTime').textContent = config.officeEnd;
@@ -1113,6 +1172,8 @@
       document.getElementById('cfgLunchMode').value = config.lunchMode;
       document.getElementById('cfgHalfMorningEnd').value = config.halfMorningEnd;
       document.getElementById('cfgHalfAfternoonStart').value = config.halfAfternoonStart;
+      document.getElementById('cfgHalfAfternoonThreshold').value = config.halfDayAfternoonThreshold;
+      document.getElementById('cfgHalfAfternoonLimit').value = config.halfAfternoonLimit;
     });
   }
 
