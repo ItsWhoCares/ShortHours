@@ -55,6 +55,9 @@ Based on your attendance requirements and reverse-engineered against the officia
   - Total Active Days (Full vs Half Day breakdown).
   - Morning Punctuality Rate (% on-time arrivals).
 - **Month Tabs**: Filter by April, May, June, July, August, September with individual month net totals.
+- **SAP Payroll Cutoff Filter (Till 22nd)**:
+  - Option in Status Filter and 1-click **SAP Cutoff (22nd)** button on toolbar.
+  - Automatically filters records up to the **22nd of the last month** (e.g. up to `22.09.2026`, excluding 23rd–29th), matching your SAP attendance report cutoff exactly.
 - **Interactive Daily Table**:
   - Full breakdown of Arrival, Departure, Morning Late/Early, Evening Extra/Early, Lunch Penalty, and Personal Out.
   - Dropdown to manually override or toggle Session Type (Full Day, Morning Half Day, Afternoon Half Day) with real-time recalculation.

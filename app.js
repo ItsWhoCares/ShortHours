@@ -340,8 +340,27 @@
       });
     }
 
-    // Filter by Status
-    if (activeStatusFilter === 'SHORT') {
+    // Filter by Status & SAP Cutoff
+    if (activeStatusFilter === 'TILL_22ND_LAST_MONTH') {
+      // Find the latest month in the dataset
+      let latestYear = 0;
+      let latestMonth = 0;
+      Object.keys(daysData).forEach(d => {
+        const dt = daysData[d].dateObj;
+        if (dt.getFullYear() > latestYear || (dt.getFullYear() === latestYear && dt.getMonth() > latestMonth)) {
+          latestYear = dt.getFullYear();
+          latestMonth = dt.getMonth();
+        }
+      });
+      dates = dates.filter(d => {
+        const dt = daysData[d].dateObj;
+        // If date is in the latest month of the dataset, only include up to 22nd
+        if (dt.getFullYear() === latestYear && dt.getMonth() === latestMonth) {
+          return dt.getDate() <= 22;
+        }
+        return true;
+      });
+    } else if (activeStatusFilter === 'SHORT') {
       dates = dates.filter(d => daysData[d].netMinutes < 0);
     } else if (activeStatusFilter === 'EXTRA') {
       dates = dates.filter(d => daysData[d].netMinutes > 0);
@@ -412,8 +431,24 @@
     document.getElementById('valPunctualRate').textContent = `${rate}%`;
     document.getElementById('valOnTimeDays').textContent = onTimeCount;
 
-    // Filtered count label
-    document.getElementById('filteredStatsLabel').textContent = `Showing ${dates.length} days`;
+    // Filtered count label & SAP cutoff badge
+    let labelText = `Showing ${dates.length} days`;
+    if (activeStatusFilter === 'TILL_22ND_LAST_MONTH') {
+      labelText = `Showing ${dates.length} days <span class="badge badge-warning" style="font-size: 10.5px; margin-left: 6px;">SAP Cutoff: &le; 22nd</span>`;
+    }
+    document.getElementById('filteredStatsLabel').innerHTML = labelText;
+
+    // Sync Quick SAP button styling
+    const quickBtn = document.getElementById('btnQuickSapCutoff');
+    if (quickBtn) {
+      if (activeStatusFilter === 'TILL_22ND_LAST_MONTH') {
+        quickBtn.classList.add('btn-primary');
+        quickBtn.classList.remove('btn-secondary');
+      } else {
+        quickBtn.classList.remove('btn-primary');
+        quickBtn.classList.add('btn-secondary');
+      }
+    }
   }
 
   function renderMonthTabs() {
@@ -1057,6 +1092,19 @@
       activeStatusFilter = e.target.value;
       renderAll();
     });
+
+    const btnQuickSap = document.getElementById('btnQuickSapCutoff');
+    if (btnQuickSap) {
+      btnQuickSap.addEventListener('click', () => {
+        if (activeStatusFilter === 'TILL_22ND_LAST_MONTH') {
+          activeStatusFilter = 'ALL';
+        } else {
+          activeStatusFilter = 'TILL_22ND_LAST_MONTH';
+        }
+        document.getElementById('statusFilter').value = activeStatusFilter;
+        renderAll();
+      });
+    }
 
     // Modals
     const detailModal = document.getElementById('detailModal');
