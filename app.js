@@ -31,7 +31,9 @@
   let activeMonth = 'ALL';
   let activeStatusFilter = 'ALL';
   let searchQuery = '';
-  let activeView = 'detailed'; // 'detailed' | 'compare'
+  let activeView = 'detailed'; // 'detailed' | 'compare' | 'analytics'
+  let cycleGroupingMode = 'CALENDAR'; // 'CALENDAR' | 'SAP_CYCLE'
+  let monthlyFlexiStats = {}; // mKey -> flexi stats object
 
   // --- Time Helpers ---
   function parseTimeToMinutes(timeStr) {
@@ -49,6 +51,15 @@
     const m = absM % 60;
     const sign = isNegative ? '-' : (includeSign && mins > 0 ? '+' : '');
     return `${sign}${h}h ${m.toString().padStart(2, '0')}m`;
+  }
+
+  function formatMinutesToTimeOfDay(mins) {
+    if (isNaN(mins)) return '--:--';
+    const h24 = Math.floor(mins / 60);
+    const m = Math.round(mins % 60);
+    const period = h24 >= 12 ? 'PM' : 'AM';
+    const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+    return `${h12.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')} ${period}`;
   }
 
   function minutesToDecimal(mins) {
@@ -77,6 +88,33 @@
   function getDayOfWeekName(dateObj) {
     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     return days[dateObj.getDay()] || '';
+  }
+
+  function getMonthName(mNum) {
+    const months = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return months[mNum] || '';
+  }
+
+  function getSapCycle(dateObj) {
+    const day = dateObj.getDate();
+    const m = dateObj.getMonth(); // 0-11
+    const y = dateObj.getFullYear();
+    let targetMonth = m;
+    let targetYear = y;
+    if (day >= 23) {
+      targetMonth = m + 1;
+      if (targetMonth > 11) {
+        targetMonth = 0;
+        targetYear = y + 1;
+      }
+    }
+    const cycleKey = `SAP_${String(targetMonth + 1).padStart(2, '0')}/${targetYear}`;
+    const prevMonthNum = targetMonth === 0 ? 12 : targetMonth;
+    const cycleMonthName = getMonthName(targetMonth + 1);
+    const prevMonthName = getMonthName(prevMonthNum);
+    const label = `${cycleMonthName} ${targetYear} Cycle`;
+    const period = `23 ${prevMonthName} – 22 ${cycleMonthName}`;
+    return { cycleKey, label, period, monthNum: targetMonth + 1, year: targetYear };
   }
 
   // --- Punch Classification ---
@@ -305,15 +343,147 @@
       };
     });
 
+    // --- Monthly Flexi Calculation (Resets 1st of each calendar month) ---
+    monthlyFlexiStats = {};
+    const monthGroups = {};
+    Object.keys(daysData).forEach(d => {
+      const parts = d.split('.');
+      if (parts.length === 3) {
+        const mKey = `${parts[1]}/${parts[2]}`;
+        if (!monthGroups[mKey]) monthGroups[mKey] = [];
+        monthGroups[mKey].push(d);
+      }
+    });
+
+    Object.keys(monthGroups).forEach(mKey => {
+      const dList = monthGroups[mKey];
+      dList.sort((a, b) => daysData[a].dateObj - daysData[b].dateObj);
+
+      let pool30m = 8;
+      let pool2h = 4;
+      let used30m = 0;
+      let used2h = 0;
+      let overflowCount = 0;
+      let graceCount = 0;
+      let onTimeCount = 0;
+
+      dList.forEach(d => {
+        const item = daysData[d];
+        if (item.sessionType === 'ABSENT' || !item.firstPunch) {
+          item.flexiStatus = null;
+          return;
+        }
+
+        if (item.sessionType === 'HALF_PM') {
+          item.flexiStatus = {
+            type: 'HALF_PM',
+            label: 'Half Day PM',
+            badgeClass: 'badge-info',
+            tierName: 'Afternoon Half Day (≥ 10:11)'
+          };
+          return;
+        }
+
+        const firstMin = parseTimeToMinutes(item.firstPunch.time);
+
+        if (firstMin <= 490) { // <= 08:10 AM
+          onTimeCount++;
+          item.flexiStatus = {
+            type: 'ON_TIME',
+            label: 'On-time (≤ 08:10)',
+            badgeClass: 'badge-ontime',
+            tierName: 'Early / On-Time (≤ 08:10)'
+          };
+        } else if (firstMin <= 500) { // 08:11 - 08:20 AM
+          graceCount++;
+          item.flexiStatus = {
+            type: 'GRACE',
+            label: 'Grace (≤ 08:20)',
+            badgeClass: 'badge-grace',
+            tierName: 'Grace Window (08:11–08:20)'
+          };
+        } else if (firstMin <= 520) { // 08:21 - 08:40 AM (30m Flexi)
+          if (pool30m > 0) {
+            pool30m--;
+            used30m++;
+            item.flexiStatus = {
+              type: 'FLEXI_30M',
+              label: `30m Flexi (#${used30m})`,
+              badgeClass: 'badge-flexi-30m',
+              tierName: '30-Min Flexi (08:21–08:40)'
+            };
+          } else if (pool2h > 0) {
+            pool2h--;
+            used2h++;
+            overflowCount++;
+            item.flexiStatus = {
+              type: 'FLEXI_2H_OVERFLOW',
+              label: '2h Overflow for 30m',
+              badgeClass: 'badge-flexi-overflow',
+              tierName: '30-Min Flexi (08:21–08:40)'
+            };
+          } else {
+            item.flexiStatus = {
+              type: 'EXHAUSTED',
+              label: 'Flexis Exhausted',
+              badgeClass: 'badge-danger',
+              tierName: '30-Min Flexi (08:21–08:40)'
+            };
+          }
+        } else if (firstMin <= 610) { // 08:41 - 10:10 AM (2h Flexi)
+          if (pool2h > 0) {
+            pool2h--;
+            used2h++;
+            item.flexiStatus = {
+              type: 'FLEXI_2H',
+              label: `2h Flexi (#${used2h})`,
+              badgeClass: 'badge-flexi-2h',
+              tierName: '2-Hour Flexi (08:41–10:10)'
+            };
+          } else {
+            item.flexiStatus = {
+              type: 'EXHAUSTED',
+              label: '2h Flexi Exhausted',
+              badgeClass: 'badge-danger',
+              tierName: '2-Hour Flexi (08:41–10:10)'
+            };
+          }
+        } else { // >= 10:11 AM
+          item.flexiStatus = {
+            type: 'HALF_PM',
+            label: 'Half Day PM',
+            badgeClass: 'badge-info',
+            tierName: 'Afternoon Half Day (≥ 10:11)'
+          };
+        }
+      });
+
+      monthlyFlexiStats[mKey] = {
+        mKey,
+        used30m,
+        used2h,
+        pool30m,
+        pool2h,
+        overflowCount,
+        graceCount,
+        onTimeCount,
+        totalWorkingDays: dList.length
+      };
+    });
+
     renderAll();
   }
 
   // --- Rendering UI ---
   function renderAll() {
     renderKPIs();
+    renderFlexiWalletCard();
     renderMonthTabs();
     renderTimesheetTable();
     renderComparatorTable();
+    if (activeView === 'analytics') {
+      renderAnalyticsDashboard();
+    }
   }
 
   function getFilteredDates() {
@@ -322,13 +492,17 @@
     // Sort chronologically
     dates.sort((a, b) => daysData[a].dateObj - daysData[b].dateObj);
 
-    // Filter by Month
+    // Filter by Month / Cycle
     if (activeMonth !== 'ALL') {
-      dates = dates.filter(d => {
-        const parts = d.split('.');
-        const mKey = `${parts[1]}/${parts[2]}`;
-        return mKey === activeMonth;
-      });
+      if (cycleGroupingMode === 'SAP_CYCLE') {
+        dates = dates.filter(d => getSapCycle(daysData[d].dateObj).cycleKey === activeMonth);
+      } else {
+        dates = dates.filter(d => {
+          const parts = d.split('.');
+          const mKey = `${parts[1]}/${parts[2]}`;
+          return mKey === activeMonth;
+        });
+      }
     }
 
     // Filter by Search Query
@@ -451,59 +625,180 @@
     }
   }
 
+  function renderFlexiWalletCard() {
+    const badgeEl = document.getElementById('flexiActiveMonthBadge');
+    if (!badgeEl) return;
+
+    let targetMonthKey = null;
+    let badgeText = 'All Months Overview';
+
+    // Find latest calendar month key in daysData
+    let latestYear = 0;
+    let latestMonthNum = 0;
+    Object.keys(daysData).forEach(d => {
+      const dt = daysData[d].dateObj;
+      if (dt.getFullYear() > latestYear || (dt.getFullYear() === latestYear && dt.getMonth() + 1 > latestMonthNum)) {
+        latestYear = dt.getFullYear();
+        latestMonthNum = dt.getMonth() + 1;
+      }
+    });
+    const latestMonthKey = `${String(latestMonthNum).padStart(2, '0')}/${latestYear}`;
+
+    if (activeMonth !== 'ALL') {
+      if (cycleGroupingMode === 'CALENDAR') {
+        targetMonthKey = activeMonth;
+        const p = activeMonth.split('/');
+        badgeText = `${getMonthName(parseInt(p[0], 10))} ${p[1]}`;
+      } else {
+        const cycleStr = activeMonth.replace('SAP_', '');
+        badgeText = `SAP Cycle ${cycleStr}`;
+      }
+    } else {
+      targetMonthKey = latestMonthKey;
+      badgeText = `${getMonthName(latestMonthNum)} ${latestYear} (Latest)`;
+    }
+
+    let used30 = 0;
+    let used2h = 0;
+    let overflow = 0;
+
+    if (targetMonthKey && monthlyFlexiStats[targetMonthKey]) {
+      const s = monthlyFlexiStats[targetMonthKey];
+      used30 = s.used30m;
+      used2h = s.used2h;
+      overflow = s.overflowCount;
+    } else {
+      // Aggregate from currently filtered dates
+      const currentDates = getFilteredDates();
+      currentDates.forEach(d => {
+        const item = daysData[d];
+        if (item && item.flexiStatus) {
+          if (item.flexiStatus.type === 'FLEXI_30M') used30++;
+          else if (item.flexiStatus.type === 'FLEXI_2H') used2h++;
+          else if (item.flexiStatus.type === 'FLEXI_2H_OVERFLOW') {
+            used2h++;
+            overflow++;
+          }
+        }
+      });
+    }
+
+    badgeEl.textContent = badgeText;
+
+    const remaining30 = Math.max(0, 8 - used30);
+    const pct30 = Math.min(100, Math.round((used30 / 8) * 100));
+    document.getElementById('valFlexi30mStatus').textContent = `${used30} / 8 Used`;
+    document.getElementById('barFlexi30m').style.width = `${pct30}%`;
+    document.getElementById('subFlexi30mRemaining').textContent = `${remaining30} remaining${overflow > 0 ? ` (${overflow} covered by 2h overflow)` : ''}`;
+
+    const remaining2h = Math.max(0, 4 - used2h);
+    const pct2h = Math.min(100, Math.round((used2h / 4) * 100));
+    document.getElementById('valFlexi2hStatus').textContent = `${used2h} / 4 Used`;
+    document.getElementById('barFlexi2h').style.width = `${pct2h}%`;
+    document.getElementById('subFlexi2hRemaining').textContent = `${remaining2h} remaining`;
+  }
+
   function renderMonthTabs() {
     const tabsContainer = document.getElementById('monthTabs');
     const existingDynamic = tabsContainer.querySelectorAll('.dynamic-tab');
     existingDynamic.forEach(t => t.remove());
 
-    // Gather unique months
-    const monthMap = {};
-    Object.keys(daysData).forEach(d => {
-      const parts = d.split('.');
-      if (parts.length === 3) {
-        const key = `${parts[1]}/${parts[2]}`;
-        if (!monthMap[key]) {
-          monthMap[key] = { key, count: 0, net: 0, monthName: getMonthName(parseInt(parts[1], 10)) };
-        }
-        monthMap[key].count++;
-        monthMap[key].net += daysData[d].netMinutes;
-      }
-    });
-
     const totalDays = Object.keys(daysData).length;
-    document.getElementById('badgeAllCount').textContent = totalDays;
-
-    Object.keys(monthMap).sort().forEach(mKey => {
-      const info = monthMap[mKey];
-      const btn = document.createElement('button');
-      btn.className = `nav-tab dynamic-tab ${activeMonth === mKey ? 'active' : ''}`;
-      btn.dataset.month = mKey;
-
-      const netDec = minutesToDecimal(info.net);
-      const sign = netDec >= 0 ? '+' : '';
-      const netLabel = `${sign}${netDec.toFixed(1)}h`;
-
-      btn.innerHTML = `${info.monthName} ${mKey.split('/')[1]} <span class="tab-badge">${netLabel}</span>`;
-      btn.addEventListener('click', () => {
-        activeMonth = mKey;
-        tabsContainer.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        renderAll();
-      });
-      tabsContainer.appendChild(btn);
-    });
-
     const allBtn = tabsContainer.querySelector('[data-month="ALL"]');
-    if (activeMonth === 'ALL') {
-      allBtn.classList.add('active');
-    } else {
-      allBtn.classList.remove('active');
+    if (allBtn) {
+      const allText = cycleGroupingMode === 'SAP_CYCLE' ? 'All SAP Cycles' : 'All Months';
+      allBtn.innerHTML = `${allText} <span class="tab-badge" id="badgeAllCount">${totalDays}</span>`;
+      if (activeMonth === 'ALL') {
+        allBtn.classList.add('active');
+      } else {
+        allBtn.classList.remove('active');
+      }
     }
-  }
 
-  function getMonthName(mNum) {
-    const months = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return months[mNum] || '';
+    if (cycleGroupingMode === 'SAP_CYCLE') {
+      // Group by SAP Payroll Cycle (23rd of M-1 to 22nd of M)
+      const cycleMap = {};
+      Object.keys(daysData).forEach(d => {
+        const sap = getSapCycle(daysData[d].dateObj);
+        if (!cycleMap[sap.cycleKey]) {
+          cycleMap[sap.cycleKey] = {
+            key: sap.cycleKey,
+            label: sap.label,
+            period: sap.period,
+            count: 0,
+            net: 0,
+            sortVal: sap.year * 100 + sap.monthNum
+          };
+        }
+        cycleMap[sap.cycleKey].count++;
+        cycleMap[sap.cycleKey].net += daysData[d].netMinutes;
+      });
+
+      Object.values(cycleMap)
+        .sort((a, b) => a.sortVal - b.sortVal)
+        .forEach(info => {
+          const btn = document.createElement('button');
+          btn.className = `nav-tab dynamic-tab ${activeMonth === info.key ? 'active' : ''}`;
+          btn.dataset.month = info.key;
+          btn.title = `Period: ${info.period} (${info.count} days)`;
+
+          const netDec = minutesToDecimal(info.net);
+          const sign = netDec >= 0 ? '+' : '';
+          const netLabel = `${sign}${netDec.toFixed(1)}h`;
+
+          btn.innerHTML = `${info.label} <span class="tab-badge">${netLabel}</span>`;
+          btn.addEventListener('click', () => {
+            activeMonth = info.key;
+            tabsContainer.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            renderAll();
+          });
+          tabsContainer.appendChild(btn);
+        });
+
+    } else {
+      // Group by Calendar Months (1st to 31st)
+      const monthMap = {};
+      Object.keys(daysData).forEach(d => {
+        const parts = d.split('.');
+        if (parts.length === 3) {
+          const key = `${parts[1]}/${parts[2]}`;
+          if (!monthMap[key]) {
+            monthMap[key] = {
+              key,
+              count: 0,
+              net: 0,
+              monthNum: parseInt(parts[1], 10),
+              year: parseInt(parts[2], 10),
+              monthName: getMonthName(parseInt(parts[1], 10))
+            };
+          }
+          monthMap[key].count++;
+          monthMap[key].net += daysData[d].netMinutes;
+        }
+      });
+
+      Object.values(monthMap)
+        .sort((a, b) => (a.year * 100 + a.monthNum) - (b.year * 100 + b.monthNum))
+        .forEach(info => {
+          const btn = document.createElement('button');
+          btn.className = `nav-tab dynamic-tab ${activeMonth === info.key ? 'active' : ''}`;
+          btn.dataset.month = info.key;
+
+          const netDec = minutesToDecimal(info.net);
+          const sign = netDec >= 0 ? '+' : '';
+          const netLabel = `${sign}${netDec.toFixed(1)}h`;
+
+          btn.innerHTML = `${info.monthName} ${info.year} <span class="tab-badge">${netLabel}</span>`;
+          btn.addEventListener('click', () => {
+            activeMonth = info.key;
+            tabsContainer.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            renderAll();
+          });
+          tabsContainer.appendChild(btn);
+        });
+    }
   }
 
   function renderTimesheetTable() {
@@ -514,7 +809,7 @@
     if (dates.length === 0) {
       tbody.innerHTML = `
         <tr>
-          <td colspan="13" style="text-align: center; padding: 40px; color: var(--text-dim);">
+          <td colspan="14" style="text-align: center; padding: 40px; color: var(--text-dim);">
             No attendance records matching the selected filters.
           </td>
         </tr>
@@ -576,6 +871,14 @@
         tdMorning.innerHTML = `<span style="color: var(--success); font-weight: 500;">+${item.morningDiff}m</span> <small style="color: var(--text-dim);">early</small>`;
       } else {
         tdMorning.innerHTML = `<span style="color: var(--text-dim);">0m</span>`;
+      }
+
+      // Flexi / Arrival Status
+      const tdFlexi = document.createElement('td');
+      if (item.flexiStatus) {
+        tdFlexi.innerHTML = `<span class="badge ${item.flexiStatus.badgeClass}">${item.flexiStatus.label}</span>`;
+      } else {
+        tdFlexi.innerHTML = `<span style="color: var(--text-dim);">--</span>`;
       }
 
       // Evening Extra / Early Out
@@ -651,6 +954,7 @@
       tr.appendChild(tdOut);
       tr.appendChild(tdPunches);
       tr.appendChild(tdMorning);
+      tr.appendChild(tdFlexi);
       tr.appendChild(tdEvening);
       tr.appendChild(tdLunch);
       tr.appendChild(tdPers);
@@ -883,6 +1187,14 @@
             </div>
           `;
         }
+        if (item.flexiStatus) {
+          mathHtml += `
+            <div class="calc-row">
+              <span>Flexi / Compliance Status:</span>
+              <span class="badge ${item.flexiStatus.badgeClass}">${item.flexiStatus.label}</span>
+            </div>
+          `;
+        }
       }
     }
 
@@ -946,6 +1258,223 @@
 
     container.innerHTML = timelineHtml + mathHtml;
     document.getElementById('detailModal').classList.add('active');
+  }
+
+  // --- Analytics & Insights Dashboard Logic ---
+  function renderAnalyticsDashboard() {
+    const dates = getFilteredDates();
+    const workingDays = dates.filter(d => daysData[d].sessionType !== 'ABSENT');
+    const totalCount = workingDays.length;
+
+    if (totalCount === 0) return;
+
+    // 1. Punctuality & Arrival Habits
+    let totalInMins = 0;
+    let inCount = 0;
+    let onTimeCount = 0;
+    let graceCount = 0;
+    let earliestTime = '23:59:59';
+    let earliestDate = '';
+
+    // 2. Departure & Overtime Trends
+    let totalOutMins = 0;
+    let outCount = 0;
+    let overtimeCount = 0;
+    let totalOvertimeMins = 0;
+    let latestTime = '00:00:00';
+    let latestDate = '';
+
+    // 3. Lunch & Personal
+    let lunchDaysCount = 0;
+    let totalLunchDur = 0;
+    let compliantLunchCount = 0;
+    let totalLunchPenalty = 0;
+    let totalPersonalTime = 0;
+
+    // 4. Arrival Distribution Tiers
+    const distTiers = {
+      'ON_TIME': { name: 'Early / On-Time (≤ 08:10)', count: 0, fillClass: 'fill-ontime' },
+      'GRACE': { name: 'Grace Window (08:11–08:20)', count: 0, fillClass: 'fill-grace' },
+      'FLEXI_30M': { name: '30-Min Flexi (08:21–08:40)', count: 0, fillClass: 'fill-30m' },
+      'FLEXI_2H': { name: '2-Hour Flexi (08:41–10:10)', count: 0, fillClass: 'fill-2h' },
+      'HALF_PM': { name: 'Afternoon Half Day (≥ 10:11)', count: 0, fillClass: 'fill-half' }
+    };
+
+    // 5. Weekday Metrics
+    const weekdayStats = {
+      'Mon': { name: 'Mon', count: 0, netSum: 0, inSum: 0, outSum: 0 },
+      'Tue': { name: 'Tue', count: 0, netSum: 0, inSum: 0, outSum: 0 },
+      'Wed': { name: 'Wed', count: 0, netSum: 0, inSum: 0, outSum: 0 },
+      'Thu': { name: 'Thu', count: 0, netSum: 0, inSum: 0, outSum: 0 },
+      'Fri': { name: 'Fri', count: 0, netSum: 0, inSum: 0, outSum: 0 }
+    };
+
+    let totalNetMins = 0;
+
+    workingDays.forEach(d => {
+      const item = daysData[d];
+      totalNetMins += item.netMinutes;
+
+      // In punch
+      if (item.firstPunch) {
+        const inM = parseTimeToMinutes(item.firstPunch.time);
+        totalInMins += inM;
+        inCount++;
+        if (item.firstPunch.time < earliestTime) {
+          earliestTime = item.firstPunch.time;
+          earliestDate = d;
+        }
+
+        if (item.flexiStatus) {
+          const type = item.flexiStatus.type;
+          if (type === 'ON_TIME') {
+            onTimeCount++;
+            distTiers['ON_TIME'].count++;
+          } else if (type === 'GRACE') {
+            graceCount++;
+            distTiers['GRACE'].count++;
+          } else if (type === 'FLEXI_30M' || type === 'FLEXI_2H_OVERFLOW') {
+            distTiers['FLEXI_30M'].count++;
+          } else if (type === 'FLEXI_2H') {
+            distTiers['FLEXI_2H'].count++;
+          } else if (type === 'HALF_PM') {
+            distTiers['HALF_PM'].count++;
+          }
+        }
+      }
+
+      // Out punch
+      if (item.lastPunch) {
+        const outM = parseTimeToMinutes(item.lastPunch.time);
+        totalOutMins += outM;
+        outCount++;
+        if (item.lastPunch.time > latestTime) {
+          latestTime = item.lastPunch.time;
+          latestDate = d;
+        }
+        if (outM > 1010) { // > 16:50
+          overtimeCount++;
+          totalOvertimeMins += (outM - 1010);
+        }
+      }
+
+      // Lunch & Personal
+      totalLunchPenalty += item.lunchPenalty;
+      totalPersonalTime += item.personalPenalty;
+
+      const nonOff = item.punches.filter(p => p.category !== 'OFFICIAL');
+      if (nonOff.length > 2) {
+        const intermediates = nonOff.slice(1, -1);
+        for (let i = 0; i < intermediates.length - 1; i += 2) {
+          const p1 = intermediates[i];
+          const p2 = intermediates[i + 1];
+          const t1 = parseTimeToMinutes(p1.time);
+          const t2 = parseTimeToMinutes(p2.time);
+          if (p1.category === 'LUNCH' || p2.category === 'LUNCH' || (t1 >= 710 && t1 <= 780 && t2 >= 710 && t2 <= 780)) {
+            lunchDaysCount++;
+            const dur = Math.max(0, t2 - t1);
+            totalLunchDur += dur;
+            if (item.lunchPenalty === 0) compliantLunchCount++;
+            break;
+          }
+        }
+      }
+
+      // Weekday performance
+      if (weekdayStats[item.dayOfWeek]) {
+        const w = weekdayStats[item.dayOfWeek];
+        w.count++;
+        w.netSum += item.netMinutes;
+        if (item.firstPunch) w.inSum += parseTimeToMinutes(item.firstPunch.time);
+        if (item.lastPunch) w.outSum += parseTimeToMinutes(item.lastPunch.time);
+      }
+    });
+
+    // Populate Key Insights Row
+    const avgInM = inCount > 0 ? (totalInMins / inCount) : 0;
+    const avgOutM = outCount > 0 ? (totalOutMins / outCount) : 0;
+    const onTimeRate = totalCount > 0 ? Math.round((onTimeCount / totalCount) * 100) : 0;
+    const graceRate = totalCount > 0 ? Math.round((graceCount / totalCount) * 100) : 0;
+    const overtimeRate = totalCount > 0 ? Math.round((overtimeCount / totalCount) * 100) : 0;
+    const avgOvertimeStay = overtimeCount > 0 ? Math.round(totalOvertimeMins / overtimeCount) : 0;
+    const avgLunch = lunchDaysCount > 0 ? Math.round(totalLunchDur / lunchDaysCount) : 0;
+    const lunchComplianceRate = lunchDaysCount > 0 ? Math.round((compliantLunchCount / lunchDaysCount) * 100) : 100;
+
+    document.getElementById('statAvgArrival').textContent = formatMinutesToTimeOfDay(avgInM);
+    document.getElementById('statOnTimeRate').textContent = `${onTimeRate}%`;
+    document.getElementById('statGraceRate').textContent = `${graceRate}%`;
+    document.getElementById('statEarliestArrival').textContent = earliestTime !== '23:59:59' ? `${earliestTime} (${earliestDate})` : '--';
+
+    document.getElementById('statAvgDeparture').textContent = formatMinutesToTimeOfDay(avgOutM);
+    document.getElementById('statOvertimeRate').textContent = `${overtimeRate}%`;
+    document.getElementById('statAvgOvertimeStay').textContent = `+${avgOvertimeStay}m`;
+    document.getElementById('statLatestDeparture').textContent = latestTime !== '00:00:00' ? `${latestTime} (${latestDate})` : '--';
+
+    document.getElementById('statAvgLunchDur').textContent = lunchDaysCount > 0 ? `${avgLunch} mins` : 'N/A';
+    document.getElementById('statLunchCompliance').textContent = `${lunchComplianceRate}%`;
+    document.getElementById('statTotalLunchPenalty').textContent = `-${totalLunchPenalty} mins`;
+    document.getElementById('statTotalPersonalTime').textContent = `-${totalPersonalTime} mins`;
+
+    // Populate Recovery Pace Advisor
+    const netFormatted = minutesToFormatted(totalNetMins, true);
+    const netDec = formatOfficialReportDecimal(minutesToDecimal(totalNetMins));
+    const paceStatEl = document.getElementById('statPaceCurrentNet');
+    paceStatEl.textContent = `${netFormatted} (${netDec} hrs)`;
+    paceStatEl.style.color = totalNetMins >= 0 ? 'var(--success)' : 'var(--danger)';
+
+    const paceTipEl = document.getElementById('statPaceTip');
+    if (totalNetMins >= 0) {
+      paceTipEl.innerHTML = `
+        🎉 <strong>Surplus Buffer:</strong> You currently have a net credit of <strong>${minutesToFormatted(totalNetMins, false)}</strong>. You are safely ahead of your hours requirement with no recovery needed before the 22nd cutoff.
+      `;
+    } else {
+      const absDef = Math.abs(totalNetMins);
+      const estDays = 5;
+      const neededDaily = Math.ceil(absDef / estDays);
+      paceTipEl.innerHTML = `
+        ⚠️ <strong>Deficit Notice:</strong> You are currently <strong>${minutesToFormatted(totalNetMins, false)}</strong> behind. To fully balance before the next 22nd SAP cutoff, plan to contribute approximately <strong>+${neededDaily} mins/day</strong> of overtime over the next ${estDays} work days.
+      `;
+    }
+
+    // Populate Weekday Performance Grid
+    const weekdayGrid = document.getElementById('weekdayPerformanceGrid');
+    weekdayGrid.innerHTML = '';
+    ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].forEach(wDay => {
+      const st = weekdayStats[wDay];
+      const avgNet = st.count > 0 ? Math.round(st.netSum / st.count) : 0;
+      const avgIn = st.count > 0 ? formatMinutesToTimeOfDay(st.inSum / st.count) : '--';
+      const avgOut = st.count > 0 ? formatMinutesToTimeOfDay(st.outSum / st.count) : '--';
+      const color = avgNet >= 0 ? 'var(--success)' : 'var(--danger)';
+
+      const card = document.createElement('div');
+      card.className = 'weekday-card';
+      card.innerHTML = `
+        <div class="weekday-name">${wDay}</div>
+        <div class="weekday-val" style="color: ${color};">${minutesToFormatted(avgNet, true)}</div>
+        <div class="weekday-sub">${st.count} days</div>
+        <div class="weekday-sub" style="font-size: 10.5px;">In: ${avgIn.split(' ')[0]} &bull; Out: ${avgOut.split(' ')[0]}</div>
+      `;
+      weekdayGrid.appendChild(card);
+    });
+
+    // Populate Arrival Distribution Tiers
+    const distContainer = document.getElementById('arrivalDistributionList');
+    distContainer.innerHTML = '';
+    Object.values(distTiers).forEach(tier => {
+      const pct = totalCount > 0 ? Math.round((tier.count / totalCount) * 100) : 0;
+      const itemEl = document.createElement('div');
+      itemEl.className = 'dist-meter-item';
+      itemEl.innerHTML = `
+        <div class="dist-meter-header">
+          <span>${tier.name}</span>
+          <strong>${tier.count} days (${pct}%)</strong>
+        </div>
+        <div class="dist-meter-track">
+          <div class="dist-meter-bar ${tier.fillClass}" style="width: ${pct}%;"></div>
+        </div>
+      `;
+      distContainer.appendChild(itemEl);
+    });
   }
 
   // --- Parse Files (HTML .xls, CSV, TSV) ---
@@ -1052,35 +1581,66 @@
       html.setAttribute('data-theme', next);
     });
 
-    // View switcher
+    // View switcher (Daily Timesheet | HR Report Comparator | Analytics & Insights)
     const detailedView = document.getElementById('detailedTableView');
     const compareView = document.getElementById('compareTableView');
+    const analyticsView = document.getElementById('analyticsView');
     const viewDetailedBtn = document.getElementById('viewDetailedBtn');
     const viewCompareBtn = document.getElementById('viewCompareBtn');
+    const viewAnalyticsBtn = document.getElementById('viewAnalyticsBtn');
 
-    viewDetailedBtn.addEventListener('click', () => {
-      activeView = 'detailed';
-      viewDetailedBtn.classList.add('active');
-      viewCompareBtn.classList.remove('active');
-      detailedView.style.display = 'block';
-      compareView.style.display = 'none';
-    });
+    function switchView(mode) {
+      activeView = mode;
+      viewDetailedBtn.classList.toggle('active', mode === 'detailed');
+      viewCompareBtn.classList.toggle('active', mode === 'compare');
+      viewAnalyticsBtn.classList.toggle('active', mode === 'analytics');
 
-    viewCompareBtn.addEventListener('click', () => {
-      activeView = 'compare';
-      viewCompareBtn.classList.add('active');
-      viewDetailedBtn.classList.remove('active');
-      detailedView.style.display = 'none';
-      compareView.style.display = 'block';
-    });
+      detailedView.style.display = mode === 'detailed' ? 'block' : 'none';
+      compareView.style.display = mode === 'compare' ? 'block' : 'none';
+      analyticsView.style.display = mode === 'analytics' ? 'block' : 'none';
+
+      if (mode === 'analytics') {
+        renderAnalyticsDashboard();
+      }
+    }
+
+    viewDetailedBtn.addEventListener('click', () => switchView('detailed'));
+    viewCompareBtn.addEventListener('click', () => switchView('compare'));
+    viewAnalyticsBtn.addEventListener('click', () => switchView('analytics'));
+
+    // Cycle Mode Switcher (Calendar Months vs SAP Payroll Cycles)
+    const btnModeCal = document.getElementById('btnModeCalendar');
+    const btnModeSap = document.getElementById('btnModeSapCycle');
+
+    if (btnModeCal && btnModeSap) {
+      btnModeCal.addEventListener('click', () => {
+        cycleGroupingMode = 'CALENDAR';
+        activeMonth = 'ALL';
+        btnModeCal.classList.add('active');
+        btnModeSap.classList.remove('active');
+        renderAll();
+      });
+
+      btnModeSap.addEventListener('click', () => {
+        cycleGroupingMode = 'SAP_CYCLE';
+        activeMonth = 'ALL';
+        btnModeSap.classList.add('active');
+        btnModeCal.classList.remove('active');
+        renderAll();
+      });
+    }
 
     // Month Tab 'All'
-    document.getElementById('monthTabs').querySelector('[data-month="ALL"]').addEventListener('click', () => {
-      activeMonth = 'ALL';
-      document.getElementById('monthTabs').querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
-      document.getElementById('monthTabs').querySelector('[data-month="ALL"]').classList.add('active');
-      renderAll();
-    });
+    const monthTabsContainer = document.getElementById('monthTabs');
+    const tabAllBtn = monthTabsContainer.querySelector('[data-month="ALL"]');
+    if (tabAllBtn) {
+      tabAllBtn.addEventListener('click', () => {
+        activeMonth = 'ALL';
+        monthTabsContainer.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
+        tabAllBtn.classList.add('active');
+        renderAll();
+      });
+    }
 
     // Search and Status Filters
     document.getElementById('searchInput').addEventListener('input', (e) => {

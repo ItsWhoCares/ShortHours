@@ -202,7 +202,65 @@
       </div>
     </section>
 
-    <!-- Navigation & View Mode -->
+    <!-- Monthly Flexi Allowance Wallet -->
+    <div class="flexi-wallet-card" id="flexiWalletCard">
+      <div class="flexi-wallet-header">
+        <div class="flexi-wallet-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+          </svg>
+        </div>
+        <div class="flexi-wallet-title">
+          <h3>
+            Monthly Flexi Allowance
+            <span class="brand-badge" id="flexiActiveMonthBadge">All Months</span>
+          </h3>
+          <p>Resets 1st of each month &bull; Grace &le; 08:20 (0 flexi) &bull; 2h flexis overflow to cover 30m if pool exhausted</p>
+        </div>
+      </div>
+
+      <div class="flexi-counters">
+        <div class="flexi-counter-item">
+          <div class="flexi-counter-label">
+            <span>30-Min Flexis (08:21–08:40)</span>
+            <strong id="valFlexi30mStatus">0 / 8 Used</strong>
+          </div>
+          <div class="flexi-bar-track">
+            <div class="flexi-bar-fill fill-30m" id="barFlexi30m" style="width: 0%;"></div>
+          </div>
+          <div style="font-size: 11px; color: var(--text-dim);" id="subFlexi30mRemaining">
+            8 remaining
+          </div>
+        </div>
+
+        <div class="flexi-counter-item">
+          <div class="flexi-counter-label">
+            <span>2-Hour Flexis (08:41–10:10)</span>
+            <strong id="valFlexi2hStatus">0 / 4 Used</strong>
+          </div>
+          <div class="flexi-bar-track">
+            <div class="flexi-bar-fill fill-2h" id="barFlexi2h" style="width: 0%;"></div>
+          </div>
+          <div style="font-size: 11px; color: var(--text-dim);" id="subFlexi2hRemaining">
+            4 remaining
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cycle Mode Bar & Navigation Tabs -->
+    <div class="cycle-mode-bar">
+      <span class="cycle-mode-label">Grouping Mode:</span>
+      <div class="cycle-pill-toggle">
+        <button class="cycle-pill-btn active" id="btnModeCalendar">
+          📅 Calendar Months (1st–31st)
+        </button>
+        <button class="cycle-pill-btn" id="btnModeSapCycle">
+          💼 SAP Payroll Cycles (23rd–22nd)
+        </button>
+      </div>
+    </div>
+
     <div class="nav-tabs-container">
       <div class="nav-tabs" id="monthTabs">
         <button class="nav-tab active" data-month="ALL">
@@ -230,6 +288,14 @@
             <circle cx="12" cy="14" r="3"></circle>
           </svg>
           HR Report Comparator
+        </button>
+        <button class="view-btn" id="viewAnalyticsBtn">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="20" x2="18" y2="10"></line>
+            <line x1="12" y1="20" x2="12" y2="4"></line>
+            <line x1="6" y1="20" x2="6" y2="14"></line>
+          </svg>
+          Analytics & Insights
         </button>
       </div>
     </div>
@@ -284,6 +350,7 @@
               <th>Last Punch Out</th>
               <th>Punches Breakdown</th>
               <th>Morning Lateness</th>
+              <th>Flexi / Arrival Status</th>
               <th>Evening Extra</th>
               <th>Lunch Deduction</th>
               <th>Personal Out</th>
@@ -333,6 +400,150 @@
             <!-- Dynamically populated comparison rows -->
           </tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- Analytics & Insights View -->
+    <div class="analytics-dashboard" id="analyticsView" style="display: none;">
+      <!-- Row 1: Key Insights & Averages -->
+      <div class="analytics-grid-row">
+        <div class="analytics-card">
+          <h4>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 14 14"></polyline>
+            </svg>
+            Punctuality & Arrival Habits
+          </h4>
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: var(--text-muted); font-size: 13px;">Average Arrival Time:</span>
+              <strong class="time-mono" id="statAvgArrival" style="color: var(--text-main);">--:-- AM</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: var(--text-muted); font-size: 13px;">On-Time Arrival Rate (&le; 08:10):</span>
+              <strong class="time-mono" id="statOnTimeRate" style="color: var(--success);">--%</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: var(--text-muted); font-size: 13px;">Grace Window Usage (08:11–08:20):</span>
+              <strong class="time-mono" id="statGraceRate" style="color: #34d399;">--%</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: var(--text-muted); font-size: 13px;">Earliest Punch-in Recorded:</span>
+              <strong class="time-mono" id="statEarliestArrival" style="color: var(--info);">--:--</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="analytics-card">
+          <h4>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+            </svg>
+            Departure & Overtime Trends
+          </h4>
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: var(--text-muted); font-size: 13px;">Average Departure Time:</span>
+              <strong class="time-mono" id="statAvgDeparture" style="color: var(--text-main);">--:-- PM</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: var(--text-muted); font-size: 13px;">Overtime Frequency (&gt; 16:50):</span>
+              <strong class="time-mono" id="statOvertimeRate" style="color: var(--success);">--%</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: var(--text-muted); font-size: 13px;">Avg Overtime on Staying Days:</span>
+              <strong class="time-mono" id="statAvgOvertimeStay" style="color: var(--success);">+--m</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: var(--text-muted); font-size: 13px;">Latest Departure Recorded:</span>
+              <strong class="time-mono" id="statLatestDeparture" style="color: var(--warning);">--:--</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="analytics-card">
+          <h4>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+            Lunch Habits & Movement
+          </h4>
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: var(--text-muted); font-size: 13px;">Average Lunch Duration:</span>
+              <strong class="time-mono" id="statAvgLunchDur" style="color: var(--text-main);">-- mins</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: var(--text-muted); font-size: 13px;">Lunch Window Compliance:</span>
+              <strong class="time-mono" id="statLunchCompliance" style="color: var(--success);">--%</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: var(--text-muted); font-size: 13px;">Total Lunch Penalty Lost:</span>
+              <strong class="time-mono" id="statTotalLunchPenalty" style="color: var(--warning);">-- mins</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: var(--text-muted); font-size: 13px;">Personal Leave Time Out:</span>
+              <strong class="time-mono" id="statTotalPersonalTime" style="color: var(--danger);">-- mins</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Row 2: Recovery Pace Advisor & Day of Week -->
+      <div class="analytics-grid-row">
+        <!-- Recovery Pace Advisor -->
+        <div class="analytics-card">
+          <h4>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
+              <polyline points="17 6 23 6 23 12"></polyline>
+            </svg>
+            SAP Payroll Recovery Pace Advisor
+          </h4>
+          <div class="pace-advisor-box">
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <span style="font-size: 13px; color: var(--text-muted);">Current Active Net:</span>
+              <span class="pace-stat" id="statPaceCurrentNet">--</span>
+            </div>
+            <div class="pace-tip" id="statPaceTip">
+              Calculating recovery pace...
+            </div>
+          </div>
+        </div>
+
+        <!-- Day of Week Performance -->
+        <div class="analytics-card" style="grid-column: span 2;">
+          <h4>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            Weekday Behavioral Performance (Monday &ndash; Friday)
+          </h4>
+          <div class="weekday-grid" id="weekdayPerformanceGrid">
+            <!-- Dynamically populated Monday to Friday cards -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Row 3: Arrival Distribution Breakdown -->
+      <div class="analytics-card">
+        <h4>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="20" x2="18" y2="10"></line>
+            <line x1="12" y1="20" x2="12" y2="4"></line>
+            <line x1="6" y1="20" x2="6" y2="14"></line>
+          </svg>
+          Morning Arrival Distribution & Flexi Tiers
+        </h4>
+        <div class="dist-meter-list" id="arrivalDistributionList">
+          <!-- Dynamically populated distribution bars -->
+        </div>
       </div>
     </div>
 

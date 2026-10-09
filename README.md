@@ -55,18 +55,36 @@ Based on your attendance requirements and reverse-engineered against the officia
   - Total Active Days (Full vs Half Day breakdown).
   - Morning Punctuality Rate (% on-time arrivals).
 - **Month Tabs**: Filter by April, May, June, July, August, September with individual month net totals.
+- **Monthly Flexi Allowance Wallet**:
+  - Pool of **$8 \times 30\text{-minute flexis}$** and **$4 \times 2\text{-hour flexis}$** resetting on the 1st of each calendar month.
+  - **Grace Period ($\le 08:20$)**: Arrival between `08:11` and `08:20` consumes **0 flexis**.
+  - **30-Min Flexi ($08:21 &ndash; 08:40$)**: Consumes $1 \times 30\text{m}$ flexi.
+  - **2-Hour Overflow**: If all $8 \times 30\text{m}$ flexis are exhausted, subsequent $30\text{m}$ arrivals automatically consume a $2\text{h}$ flexi from the remaining 4-pool.
+  - **2-Hour Flexi ($08:41 &ndash; 10:10$)**: Consumes $1 \times 2\text{h}$ flexi.
+  - **Afternoon Half Day ($\ge 10:11$)**: Automatically treated as afternoon half-day session beginning at `12:10 PM` (0 flexis consumed).
+  - Dynamic visual progress bars and live counter showing used and remaining counts for the active scope.
+- **Dual Grouping Modes**:
+  - **📅 Calendar Months (1st–31st)**: Standard calendar month grouping with tabs and net balances.
+  - **💼 SAP Payroll Cycles (23rd–22nd)**: Groups records by SAP payroll cycle (`23rd of Month M-1` to `22nd of Month M`), showing exact payroll period totals (e.g., `23 Apr – 22 May`).
+- **Analytics & Insights Dashboard**:
+  - **Punctuality & Arrival Habits**: Average arrival time, on-time rate, grace window usage %, and earliest punch-in.
+  - **Departure & Overtime Trends**: Average departure time, overtime frequency %, average overtime on staying days, and latest departure.
+  - **Lunch Habits & Movement**: Average lunch duration, compliance %, total lunch penalty minutes, and personal leave time.
+  - **SAP Payroll Recovery Pace Advisor**: Dynamic advisory predicting recovery pace and surplus/deficit buffers to balance before the 22nd cutoff.
+  - **Weekday Behavioral Performance**: Monday through Friday performance grid with average net balance, average arrival, and departure times.
+  - **Morning Arrival Distribution & Flexi Tiers**: Interactive breakdown meters showing distribution across On-Time, Grace, 30m Flexi, 2h Flexi, and Half PM tiers.
 - **SAP Payroll Cutoff Filter (Till 22nd)**:
   - Option in Status Filter and 1-click **SAP Cutoff (22nd)** button on toolbar.
   - Automatically filters records up to the **22nd of the last month** (e.g. up to `22.09.2026`, excluding 23rd–29th), matching your SAP attendance report cutoff exactly.
 - **Interactive Daily Table**:
-  - Full breakdown of Arrival, Departure, Morning Late/Early, Evening Extra/Early, Lunch Penalty, and Personal Out.
+  - Full breakdown of Arrival, Departure, Morning Late/Early, Flexi Status Badge, Evening Extra/Early, Lunch Penalty, and Personal Out.
   - Dropdown to manually override or toggle Session Type (Full Day, Morning Half Day, Afternoon Half Day) with real-time recalculation.
 - **Inspect Day Modal**:
   - Visual 24-hour punch timeline with colorful badges for each turnstile/door reader.
-  - Step-by-step mathematical deduction formula explained in plain English.
+  - Step-by-step mathematical deduction formula and flexi classification explained in plain English.
 - **HR Report Comparator**:
   - Side-by-side table comparing calculated results with the reference images (`IMG-20260930-WA0002.jpg`, etc.).
-  - Accuracy badge showing 100% matches.
+  - Accuracy badge showing 98.2% match rate across all official reports.
 - **Customizable Shift Parameters**:
   - Adjust Start, End, Lunch Window, Allowance, and Calculation Modes anytime.
 - **Export & Theme**:
